@@ -1,0 +1,46 @@
+syntax = "proto3";
+
+import "scalapb/scalapb.proto";
+import "google/protobuf/timestamp.proto";
+import "UserEntity.proto";
+package com.jc.user.domain.proto;
+
+option (scalapb.options) = {
+  package_name: "com.jc.user.domain.proto"
+  import: "com.jc.user.domain.proto._"
+  flat_package: true
+};
+
+
+message UserView {
+  string id = 1 [(scalapb.field).type = "com.jc.user.domain.UserEntity.UserId"];
+  string username = 2;
+  string email = 3;
+  string pass = 4;
+  Address address = 5;
+  Department department = 6;
+}
+
+message UserViewEnvelope {
+  UserView entity = 1;
+}
+
+message UserViewEvent {
+  string entityId = 1 [(scalapb.field).type = "com.jc.user.domain.UserEntity.UserId"];
+  google.protobuf.Timestamp timestamp = 2 [(scalapb.field).type = "java.time.Instant", (scalapb.field).no_box = true];
+  UserView entity = 3;
+}
+
+message GetUserViewReq {
+  string id = 1 [(scalapb.field).type = "com.jc.user.domain.UserEntity.UserId"];
+}
+
+message GetUserViewRes {
+  UserView user = 1;
+}
+
+service UserViewApiService {
+
+  rpc GetUserView (GetUserViewReq) returns (GetUserViewRes) {
+  }
+}

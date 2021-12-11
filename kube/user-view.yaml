@@ -1,0 +1,86 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: user-view-svc
+  name: user-view-svc
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: user-view-svc
+  template:
+    metadata:
+      labels:
+        app: user-view-svc
+    spec:
+      containers:
+        - name: user-view-svc
+          image: user-view-svc:latest
+          # remove for real clusters, useful for minikube
+          imagePullPolicy: Never
+          resources:
+            requests:
+              memory: "256Mi"
+#              cpu: "250m"
+            limits:
+              memory: "576Mi"
+#              cpu: "500m"
+          readinessProbe:
+            httpGet:
+              path: "/ready"
+              port: http
+            periodSeconds: 10
+            failureThreshold: 3
+            initialDelaySeconds: 10
+          livenessProbe:
+            httpGet:
+              path: "/alive"
+              port: http
+            periodSeconds: 10
+            failureThreshold: 5
+            initialDelaySeconds: 20
+          ports:
+            - name: http
+              containerPort: 8000
+              protocol: TCP
+            - name: grpc
+              containerPort: 8010
+              protocol: TCP
+            - name: prometheus
+              containerPort: 9080
+              protocol: TCP
+          env:
+            - name: NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: JAVA_OPTS
+              value: "-Xmx512m -Dconfig.resource=application-kube.conf"
+            - name: ELASTICSEARCH_URL
+              value: "http://es-es-http:9200"
+            - name: KAFKA_URL
+              value: "kafka-kafka-brokers:9092"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: user-view-svc
+  name: user-view-svc
+spec:
+  type: NodePort
+  ports:
+    - name: http
+      protocol: TCP
+      port: 8000
+      targetPort: http
+      nodePort: 30558
+    - name: grpc
+      protocol: TCP
+      port: 8010
+      targetPort: grpc
+      nodePort: 30568
+  selector:
+    app: user-view-svc
