@@ -6,7 +6,7 @@
         </encoder>
     </appender>
 
-    <logger name="org.apache.kafka" level="ERROR"/>
+    <logger name="org.apache.kafka" level="INFO"/>
 
     <logger name="kafka" level="WARN"/>
 

@@ -228,6 +228,9 @@ object KafkaStreamsApp {
     props.put(StreamsConfig.APPLICATION_ID_CONFIG, "user-view-app")
     props.put(StreamsConfig.BOOTSTRAP_SERVERS_CONFIG, config.addresses.mkString(","))
     props.put(StreamsConfig.DEFAULT_KEY_SERDE_CLASS_CONFIG, Serdes.stringSerde.getClass)
+    config.stateDir.foreach { stateDir =>
+      props.put(StreamsConfig.STATE_DIR_CONFIG, stateDir.toString())
+    }
     new StreamsConfig(props)
   }
 
@@ -271,7 +274,7 @@ object KafkaStreamsApp {
         } yield {
           LiveKafkaStreamsAppService(config, kafkaStreams)
         }
-      }(app => ZIO.succeed(app.kafkaStreams.close()))
+      }(app => logger.info("kafka app close") *> ZIO.succeed(app.kafkaStreams.close()))
     }
   }
 

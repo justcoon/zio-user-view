@@ -1,12 +1,15 @@
 package com.jc.user.view.model.config
 
+import eu.timepit.refined.api.Refined
+import eu.timepit.refined.collection.NonEmpty
 import pureconfig.generic.semiauto.deriveReader
 
 final case class KafkaConfig(
   addresses: Addresses,
   userTopic: TopicName,
   departmentTopic: TopicName,
-  userViewTopic: TopicName)
+  userViewTopic: TopicName,
+  stateDir: Option[String Refined NonEmpty] = None)
 
 object KafkaConfig {
   import eu.timepit.refined.pureconfig._
