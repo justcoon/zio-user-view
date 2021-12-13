@@ -1,11 +1,12 @@
 apiVersion: apps/v1
-kind: Deployment
+kind: StatefulSet
 metadata:
   labels:
     app: user-view-svc
   name: user-view-svc
   namespace: default
 spec:
+  serviceName: user-view-svc
   replicas: 1
   selector:
     matchLabels:
@@ -58,10 +59,28 @@ spec:
                   fieldPath: metadata.namespace
             - name: JAVA_OPTS
               value: "-Xmx512m -Dconfig.resource=application-kube.conf"
-            - name: ELASTICSEARCH_URL
-              value: "http://es-es-http:9200"
             - name: KAFKA_URL
               value: "kafka-kafka-brokers:9092"
+          volumeMounts:
+            - name: user-view-svc-data
+              mountPath: /kafka-streams
+  volumeClaimTemplates:
+    - metadata:
+        name: user-view-svc-data
+      spec:
+        accessModes: [ "ReadWriteOnce" ]
+        storageClassName: fast
+        resources:
+          requests:
+            storage: 1Gi
+---
+kind: StorageClass
+apiVersion: storage.k8s.io/v1
+metadata:
+  name: fast
+provisioner: k8s.io/minikube-hostpath
+parameters:
+  type: pd-ssd
 ---
 apiVersion: v1
 kind: Service

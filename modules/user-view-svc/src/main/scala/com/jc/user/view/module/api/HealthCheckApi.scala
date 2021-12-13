@@ -1,25 +1,26 @@
 package com.jc.user.view.module.api
 
-import cats.effect.Sync
-import org.http4s.HttpRoutes
+import org.http4s.{HttpRoutes, Response, Status}
 import org.http4s.dsl.Http4sDsl
+
 import zio.RIO
-import zio.blocking.Blocking
 import zio.clock.Clock
 
 object HealthCheckApi {
 
-  def httpRoutes[R <: Clock with Blocking]: HttpRoutes[RIO[R, *]] = {
+  def httpRoutes[R <: Clock](isReady: () => RIO[R, Boolean]): HttpRoutes[RIO[R, *]] = {
     import zio.interop.catz._
-    healthCheckRoutes
-  }
-
-  private def healthCheckRoutes[F[_]: Sync]: HttpRoutes[F] = {
-    val dsl = Http4sDsl[F]
+    val dsl = Http4sDsl[RIO[R, *]]
     import dsl._
-    HttpRoutes.of[F] {
+    HttpRoutes.of[RIO[R, *]] {
       case GET -> Root / "ready" =>
-        Ok("OK")
+        isReady().map { res =>
+          if (res) {
+            Response(Status.Ok).withEntity("OK")
+          } else {
+            Response(Status.ServiceUnavailable)
+          }
+        }
       case GET -> Root / "alive" =>
         Ok("OK")
     }

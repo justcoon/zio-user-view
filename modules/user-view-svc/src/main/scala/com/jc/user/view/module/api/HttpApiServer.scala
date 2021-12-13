@@ -1,6 +1,7 @@
 package com.jc.user.view.module.api
 
 import com.jc.user.view.model.config.HttpApiConfig
+import com.jc.user.view.module.kafka.KafkaStreamsApp
 import org.http4s.blaze.server.BlazeServerBuilder
 import org.http4s.{HttpApp, HttpRoutes}
 import org.http4s.server.middleware.{Logger => HttpServerLogger}
@@ -15,11 +16,19 @@ import eu.timepit.refined.auto._
 
 object HttpApiServer {
 
-  type ServerEnv = Clock with Blocking with Logging
+  type ServerEnv = Clock with Blocking with Logging with KafkaStreamsApp
+
+  private def isReady(): RIO[KafkaStreamsApp, Boolean] = {
+    ZIO.accessM[KafkaStreamsApp] { app =>
+      app.get.getAppState().map { s =>
+        s.isRunningOrRebalancing
+      }
+    }
+  }
 
   private def httpRoutes(): HttpRoutes[RIO[ServerEnv, *]] =
     Router[RIO[ServerEnv, *]](
-      "/" -> HealthCheckApi.httpRoutes
+      "/" -> HealthCheckApi.httpRoutes[ServerEnv](isReady)
     )
 
   private def httpApp(): HttpApp[RIO[ServerEnv, *]] =

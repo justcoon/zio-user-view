@@ -236,6 +236,7 @@ object KafkaStreamsApp {
 
   trait Service {
     def getUserView(id: UserId): Task[Option[UserView]]
+    def getAppState(): Task[KafkaStreams.State]
   }
 
   final case class LiveKafkaStreamsAppService(config: KafkaConfig, kafkaStreams: KafkaStreams) extends Service {
@@ -256,6 +257,10 @@ object KafkaStreamsApp {
         store <- getUserViewStore()
         res <- ZIO.succeed(Option(store.get(id)))
       } yield res.flatMap(_.entity)
+    }
+
+    override def getAppState(): Task[KafkaStreams.State] = {
+      ZIO.succeed(kafkaStreams.state())
     }
   }
 
