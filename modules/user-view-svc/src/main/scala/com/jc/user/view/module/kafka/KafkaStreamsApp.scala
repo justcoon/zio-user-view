@@ -27,6 +27,7 @@ import org.apache.kafka.streams.state.{KeyValueStore, QueryableStoreTypes, ReadO
 import shapeless.tag
 import shapeless.tag.@@
 import zio.logging.{Logger, Logging}
+import zio.stream.ZStream
 import zio.{Task, ZIO, ZLayer, ZManaged}
 
 import java.time.Instant
@@ -236,6 +237,7 @@ object KafkaStreamsApp {
 
   trait Service {
     def getUserView(id: UserId): Task[Option[UserView]]
+    def getUserViews(): ZStream[Any, Throwable, UserView]
     def getAppState(): Task[KafkaStreams.State]
   }
 
@@ -257,6 +259,12 @@ object KafkaStreamsApp {
         store <- getUserViewStore()
         res <- ZIO.succeed(Option(store.get(id)))
       } yield res.flatMap(_.entity)
+    }
+
+    override def getUserViews(): ZStream[Any, Throwable, UserView] = {
+      ZStream.fromJavaIteratorEffect(getUserViewStore().map(_.all())).map(_.value.entity).collect { case Some(e) =>
+        e
+      }
     }
 
     override def getAppState(): Task[KafkaStreams.State] = {

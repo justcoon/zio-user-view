@@ -39,8 +39,15 @@ message GetUserViewRes {
   UserView user = 1;
 }
 
+message UserViewStreamReq {
+
+}
+
 service UserViewApiService {
 
   rpc GetUserView (GetUserViewReq) returns (GetUserViewRes) {
+  }
+
+  rpc UserViewStream (UserViewStreamReq) returns (stream UserView) {
   }
 }
