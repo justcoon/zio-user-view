@@ -9,6 +9,7 @@ final case class KafkaConfig(
   userTopic: TopicName,
   departmentTopic: TopicName,
   userViewTopic: TopicName,
+  applicationId: String Refined NonEmpty,
   stateDir: Option[String Refined NonEmpty] = None)
 
 object KafkaConfig {

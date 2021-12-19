@@ -13,17 +13,19 @@ import com.jc.user.domain.proto.{
   UserViewEnvelope,
   UserViewEvent
 }
-import com.jc.user.view.model.config.KafkaConfig
+import com.jc.user.view.model.config.{KafkaConfig, TopicName}
 import eu.timepit.refined.auto._
 import org.apache.kafka.common.serialization.Serde
 import org.apache.kafka.common.utils.Bytes
-import org.apache.kafka.streams.{KafkaStreams, StoreQueryParameters, StreamsConfig}
-import org.apache.kafka.streams.kstream.ValueJoiner
+import org.apache.kafka.streams.{KafkaStreams, KeyValue, StoreQueryParameters, StreamsConfig}
+import org.apache.kafka.streams.kstream.{Transformer, ValueJoiner}
+import org.apache.kafka.streams.processor.ProcessorContext
 import org.apache.kafka.streams.scala.ImplicitConversions._
 import org.apache.kafka.streams.scala.StreamsBuilder
-import org.apache.kafka.streams.scala.kstream.{KTable, Materialized}
+import org.apache.kafka.streams.scala.kstream.Materialized
 import org.apache.kafka.streams.scala.serialization.Serdes
-import org.apache.kafka.streams.state.{KeyValueStore, QueryableStoreTypes, ReadOnlyKeyValueStore}
+import org.apache.kafka.streams.state.{KeyValueStore, QueryableStoreTypes, ReadOnlyKeyValueStore, Stores}
+import scalapb.{GeneratedMessage, GeneratedMessageCompanion}
 import shapeless.tag
 import shapeless.tag.@@
 import zio.logging.{Logger, Logging}
@@ -44,55 +46,30 @@ object KafkaStreamsApp {
     Serdes.fromFn[String @@ T](serializer, deserializer)
   }
 
+  private def generatedMessageSerde[T >: Null <: GeneratedMessage](comp: GeneratedMessageCompanion[T]): Serde[T] = {
+    val serializer = (v: T) => v.toByteArray
+    val deserializer = (b: Array[Byte]) => Some(comp.parseFrom(b))
+    Serdes.fromFn[T](serializer, deserializer)
+  }
+
   private implicit val userIdSerde: Serde[UserId] = taggedStringSerde[UserIdTag]
 
-  private implicit val userEventSerde: Serde[UserPayloadEvent] = {
-    val serializer = (v: UserPayloadEvent) => v.toByteArray
-    val deserializer = (b: Array[Byte]) => Some(UserPayloadEvent.parseFrom(b))
-    Serdes.fromFn(serializer, deserializer)
-  }
+  private implicit val userEventSerde: Serde[UserPayloadEvent] = generatedMessageSerde(UserPayloadEvent)
 
-  private implicit val userSerde: Serde[User] = {
-    val serializer = (v: User) => v.toByteArray
-    val deserializer = (b: Array[Byte]) => Some(User.parseFrom(b))
-    Serdes.fromFn(serializer, deserializer)
-  }
+  private implicit val userSerde: Serde[User] = generatedMessageSerde(User)
 
-  private implicit val userStateSerde: Serde[UserEntityState] = {
-    val serializer = (v: UserEntityState) => v.toByteArray
-    val deserializer = (b: Array[Byte]) => Some(UserEntityState.parseFrom(b))
-    Serdes.fromFn(serializer, deserializer)
-  }
+  private implicit val userStateSerde: Serde[UserEntityState] = generatedMessageSerde(UserEntityState)
 
-  private implicit val departmentStateSerde: Serde[DepartmentEntityState] = {
-    val serializer = (v: DepartmentEntityState) => v.toByteArray
-    val deserializer = (b: Array[Byte]) => Some(DepartmentEntityState.parseFrom(b))
-    Serdes.fromFn(serializer, deserializer)
-  }
+  private implicit val departmentStateSerde: Serde[DepartmentEntityState] = generatedMessageSerde(DepartmentEntityState)
 
   private implicit val departmentIdSerde: Serde[DepartmentId] = taggedStringSerde[DepartmentIdTag]
 
-  private implicit val departmentEventSerde: Serde[DepartmentPayloadEvent] = {
-    val serializer = (v: DepartmentPayloadEvent) => v.toByteArray
-    val deserializer = (b: Array[Byte]) => Some(DepartmentPayloadEvent.parseFrom(b))
-    Serdes.fromFn(serializer, deserializer)
-  }
+  private implicit val departmentEventSerde: Serde[DepartmentPayloadEvent] = generatedMessageSerde(
+    DepartmentPayloadEvent)
 
-  private implicit val userViewEnvelopeSerde: Serde[UserViewEnvelope] = {
-    val serializer = (v: UserViewEnvelope) => v.toByteArray
-    val deserializer = (b: Array[Byte]) => Some(UserViewEnvelope.parseFrom(b))
-    Serdes.fromFn(serializer, deserializer)
-  }
+  private implicit val userViewEnvelopeSerde: Serde[UserViewEnvelope] = generatedMessageSerde(UserViewEnvelope)
 
-  private implicit val userViewEventSerde: Serde[UserViewEvent] = {
-    val serializer = (v: UserViewEvent) => v.toByteArray
-    val deserializer = (b: Array[Byte]) => Some(UserViewEvent.parseFrom(b))
-    Serdes.fromFn(serializer, deserializer)
-  }
-
-  def createUser(id: UserId): User = User(id, "", "", "")
-
-  def createDepartment(id: DepartmentId): Department = Department(id, "", "")
+  private implicit val userViewEventSerde: Serde[UserViewEvent] = generatedMessageSerde(UserViewEvent)
 
   def aggregateUser(id: UserId, event: UserPayloadEvent, state: UserEntityState): UserEntityState = {
     val newEntity = state.entity.flatMap { user =>
@@ -173,10 +150,101 @@ object KafkaStreamsApp {
     DepartmentEntityState(newEntity)
   }
 
-  def getUserViewStoreName(config: KafkaConfig) = {
-    config.userViewTopic + "-store"
+  def stateTransformer[K, V, R](
+    storeName: String,
+    getResult: (K, V, R) => R,
+    emptyResult: => R): Transformer[K, V, KeyValue[K, R]] = new Transformer[K, V, KeyValue[K, R]] {
+
+    private var stateStore: KeyValueStore[K, R] = null
+
+    override def init(context: ProcessorContext): Unit = {
+      stateStore = context.getStateStore[KeyValueStore[K, R]](storeName)
+      assert(stateStore != null, s"StateStore: ${storeName} not found")
+    }
+
+    override def transform(key: K, value: V): KeyValue[K, R] = {
+      val current = Option(stateStore.get(key)).getOrElse(emptyResult)
+      val result = getResult(key, value, current)
+      stateStore.put(key, result)
+      KeyValue.pair(key, result)
+    }
+
+    override def close(): Unit = ()
   }
 
+  def userTransformer(storeName: String): Transformer[UserId, UserPayloadEvent, KeyValue[UserId, UserEntityState]] =
+    stateTransformer(storeName, aggregateUser, UserEntityState())
+
+  def departmentTransformer(storeName: String)
+    : Transformer[DepartmentId, DepartmentPayloadEvent, KeyValue[DepartmentId, DepartmentEntityState]] =
+    stateTransformer(storeName, aggregateDepartment, DepartmentEntityState())
+
+  def keyValueStoreBuilder[K, V](storeName: String)(implicit keySerde: Serde[K], valueSerde: Serde[V]) = {
+    Stores.keyValueStoreBuilder(Stores.inMemoryKeyValueStore(storeName), keySerde, valueSerde)
+  }
+
+  def getUserViewStoreName(config: KafkaConfig) = {
+    getStoreName(config.userViewTopic)
+  }
+
+  def getStoreName(topic: TopicName): String = {
+    topic + "-store"
+  }
+
+  def streamTopology2(config: KafkaConfig) = {
+    val builder = new StreamsBuilder()
+
+    val userStoreName = getStoreName(config.userTopic)
+    val departmentStoreName = getStoreName(config.departmentTopic)
+
+    builder.addStateStore(keyValueStoreBuilder[UserId, UserPayloadEvent](userStoreName))
+    builder.addStateStore(keyValueStoreBuilder[DepartmentId, DepartmentPayloadEvent](departmentStoreName))
+
+    val usersStream = builder
+      .stream[UserId, UserPayloadEvent](config.userTopic)
+      .transform(() => userTransformer(userStoreName), userStoreName)
+
+    val departmentsStream = builder
+      .stream[DepartmentId, DepartmentPayloadEvent](config.departmentTopic)
+      .transform(() => departmentTransformer(departmentStoreName), departmentStoreName)
+
+    val usersTable = usersStream.toTable
+
+    val departmentsTable = departmentsStream.toTable
+
+    // FIXME kafka FK left join issue https://issues.apache.org/jira/browse/KAFKA-12317
+    // if FK is null, UserView record is not created
+    val getUserDepartmentId: UserEntityState => DepartmentId = state => {
+      val depId = state.entity.flatMap(_.department).map(_.id)
+
+      depId.orNull // null value - java api
+    }
+
+    val userViewJoiner: ValueJoiner[UserEntityState, DepartmentEntityState, UserViewEnvelope] =
+      (userState, departmentState) => {
+        // null value - java api
+        val department = Option(departmentState).flatMap(_.entity)
+        val view = userState.entity.map { user =>
+          import io.scalaland.chimney.dsl._
+          user.into[UserView].withFieldConst(_.department, department).transform
+        }
+        UserViewEnvelope(view)
+      }
+
+    val userViewMaterialized =
+      Materialized.as[UserId, UserViewEnvelope, KeyValueStore[Bytes, Array[Byte]]](getUserViewStoreName(config))
+
+    val usersDepartmentTable =
+      usersTable.leftJoin(departmentsTable, getUserDepartmentId, userViewJoiner, userViewMaterialized)
+
+    usersDepartmentTable.toStream.map { (id, view) =>
+      id -> UserViewEvent(id, Instant.now(), view.entity)
+    }.to(config.userViewTopic)
+
+    builder.build()
+  }
+
+  // https://engineering.wingify.com/posts/kafka-streams-stateful-ingestion-with-processor-api/
   // https://www.confluent.io/blog/data-enrichment-with-kafka-streams-foreign-key-joins/
   // https://cwiki.apache.org/confluence/display/KAFKA/Kafka+Streams+Join+Semantics#KafkaStreamsJoinSemantics-KTable-KTableForeign-KeyJoin(v2.4.xandnewer)
   def streamTopology(config: KafkaConfig) = {
@@ -226,7 +294,7 @@ object KafkaStreamsApp {
 
   def streamConfig(config: KafkaConfig): StreamsConfig = {
     val props = new Properties
-    props.put(StreamsConfig.APPLICATION_ID_CONFIG, "user-view-app")
+    props.put(StreamsConfig.APPLICATION_ID_CONFIG, config.applicationId.toString())
     props.put(StreamsConfig.BOOTSTRAP_SERVERS_CONFIG, config.addresses.mkString(","))
     props.put(StreamsConfig.DEFAULT_KEY_SERDE_CLASS_CONFIG, Serdes.stringSerde.getClass)
     config.stateDir.foreach { stateDir =>
