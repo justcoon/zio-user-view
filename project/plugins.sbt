@@ -9,5 +9,5 @@ addSbtPlugin("au.com.onegeek" % "sbt-dotenv" % "2.1.147")
 addSbtPlugin("com.typesafe.sbt"      % "sbt-git"       % "1.0.0")
 addSbtPlugin("com.thesamet"          % "sbt-protoc"    % "1.0.4")
 
-libraryDependencies += "com.thesamet.scalapb" %% "compilerplugin" % "0.11.7"
+libraryDependencies += "com.thesamet.scalapb" %% "compilerplugin" % "0.11.8"
 libraryDependencies += "com.thesamet.scalapb.zio-grpc" %% "zio-grpc-codegen" % "0.5.1"

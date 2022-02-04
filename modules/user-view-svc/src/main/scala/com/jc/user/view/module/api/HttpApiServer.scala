@@ -19,11 +19,10 @@ object HttpApiServer {
   type ServerEnv = Clock with Blocking with Logging with KafkaStreamsApp
 
   private def isReady(): RIO[KafkaStreamsApp, Boolean] = {
-    ZIO.accessM[KafkaStreamsApp] { app =>
-      app.get.getAppState().map { s =>
-        s.isRunningOrRebalancing
-      }
-    }
+    for {
+      app <- ZIO.service[KafkaStreamsApp.Service]
+      state <- app.getAppState()
+    } yield state.isRunningOrRebalancing
   }
 
   private def httpRoutes(): HttpRoutes[RIO[ServerEnv, *]] =

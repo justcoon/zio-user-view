@@ -26,14 +26,13 @@ object PdiJwtHelperSpec extends DefaultRunnableSpec {
   )
 
   private def decodeToken(token: String): RIO[Has[PdiJwtHelper], JwtClaim] = {
-    ZIO.accessM[Has[PdiJwtHelper]] { env =>
-      RIO.fromEither(env.get.decodeClaim(token).toEither)
+    ZIO.service[PdiJwtHelper].flatMap { helper =>
+      RIO.fromEither(helper.decodeClaim(token).toEither)
     }
   }
 
   private def getTestToken(): RIO[Has[PdiJwtHelper], (String, String)] = {
-    ZIO.access[Has[PdiJwtHelper]] { env =>
-      val helper = env.get
+    ZIO.service[PdiJwtHelper].map { helper =>
       val authToken = "{}"
       val claim = helper.claim(authToken, subject = Some("test"), issuer = helper.config.issuer.map(_.value))
       val token = helper.encodeClaim(claim)

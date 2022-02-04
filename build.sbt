@@ -1,24 +1,24 @@
 Global / resolvers += "Sonatype OSS Snapshots" at "https://oss.sonatype.org/content/repositories/snapshots"
-Scope.Global / scalaVersion := "2.13.7"
+Scope.Global / scalaVersion := "2.13.8"
 
 lazy val Versions = new {
   val kindProjector = "0.13.2"
-  val http4s = "0.23.7"
+  val http4s = "0.23.10"
   val zio = "1.0.13"
   val zioInteropCats = "3.2.9.0"
   val zioLogging = "0.5.14"
-  val zioMetrics = "1.0.13"
+  val zioMetrics = "1.0.14"
   val zioMagic = "0.3.11"
   val jackson = "2.13.1"
   val circe = "0.14.1"
   val randomDataGenerator = "2.9"
   val pureconfig = "0.17.1"
   val refined = "0.9.28"
-  val logback = "1.2.9"
-  val grpc = "1.42.1"
+  val logback = "1.2.10"
+  val grpc = "1.44.0"
   val chimney = "0.6.1"
   val pauldijouJwt = "5.0.0"
-  val kafka = "3.0.0"
+  val kafka = "3.1.0"
 }
 
 lazy val library =
